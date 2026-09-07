@@ -39,8 +39,23 @@
   </div>
   <div style="font-size:13px; color:#666; margin-bottom:16px;">{{ doctor_name }}{% if doctor_clinic %} &middot; {{ doctor_clinic }}{% endif %}</div>
 
-  <label for="patient_ref">Patient reference (test only)</label>
-  <input type="text" id="patient_ref" placeholder="Any identifier for this pilot">
+  <label for="patient_name">Patient name</label>
+  <input type="text" id="patient_name" placeholder="Last, First">
+
+  <label for="patient_dob">Date of birth</label>
+  <input type="text" id="patient_dob" placeholder="YYYY-MM-DD">
+
+  <label for="patient_sex">Sex</label>
+  <input type="text" id="patient_sex" placeholder="M / F / X">
+
+  <label for="patient_phin">PHIN</label>
+  <input type="text" id="patient_phin" placeholder="9-digit health number">
+
+  <label for="patient_phone">Cell phone</label>
+  <input type="text" id="patient_phone" placeholder="10-digit cell number">
+
+  <label for="patient_ref">Additional reference (optional)</label>
+  <input type="text" id="patient_ref" placeholder="Any other identifier">
 
   <label for="fax_number">Report fax number</label>
   <input type="text" id="fax_number" placeholder="10-digit fax" value="{{ doctor_fax }}">
@@ -216,6 +231,11 @@ document.getElementById('submitBtn').addEventListener('click', ()=>{
   const errEl = document.getElementById('errMsg');
   errEl.style.display = 'none';
   const payload = {
+    patient_name: document.getElementById('patient_name').value.trim(),
+    patient_dob: document.getElementById('patient_dob').value.trim(),
+    patient_sex: document.getElementById('patient_sex').value.trim(),
+    patient_phin: document.getElementById('patient_phin').value.trim(),
+    patient_phone: document.getElementById('patient_phone').value.trim(),
     patient_ref: document.getElementById('patient_ref').value.trim(),
     fax_number: document.getElementById('fax_number').value.trim(),
     studies: cart
