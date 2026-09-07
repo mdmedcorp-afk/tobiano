@@ -24,8 +24,14 @@
 
 <div class="row"><span>Referring physician</span><span>{{ order['referring_doc'] }}</span></div>
 <div class="row"><span>Clinic</span><span>{{ order['clinic_name'] or '' }}</span></div>
-<div class="row"><span>Patient reference</span><span>{{ order['patient_ref'] or '' }}</span></div>
-<div class="row"><span>Date</span><span>{{ order['created_at'][:10] }}</span></div>
+<div class="row"><span>Clinic address</span><span>{{ order['doctor_address'] or '' }}</span></div>
+<div class="row"><span>Patient name</span><span>{{ order['patient_name'] or '' }}</span></div>
+<div class="row"><span>Date of birth</span><span>{{ order['patient_dob'] or '' }}</span></div>
+<div class="row"><span>Sex</span><span>{{ order['patient_sex'] or '' }}</span></div>
+<div class="row"><span>PHIN</span><span>{{ order['patient_phin'] or '' }}</span></div>
+<div class="row"><span>Cell phone</span><span>{{ order['patient_phone'] or '' }}</span></div>
+<div class="row"><span>Additional reference</span><span>{{ order['patient_ref'] or '' }}</span></div>
+<div class="row"><span>Date requisitioned</span><span>{{ order['created_at'][:10] }}</span></div>
 <div class="row"><span>Report to fax</span><span>{{ order['fax_number'] or '' }}</span></div>
 
 <div class="studies">
