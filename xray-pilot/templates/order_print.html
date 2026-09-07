@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Diagnostic imaging requisition</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; max-width: 640px; margin: 0 auto; padding: 32px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #666; margin-bottom: 24px; }
+  .row { display: flex; justify-content: space-between; border-bottom: 1px solid #ddd; padding: 8px 0; font-size: 14px; }
+  .row span:first-child { color: #666; }
+  .studies { margin-top: 20px; }
+  .studies h2 { font-size: 14px; margin-bottom: 8px; }
+  .studies ul { padding-left: 20px; margin: 0; }
+  .studies li { font-size: 14px; margin-bottom: 4px; }
+  .note { margin-top: 28px; font-size: 12px; color: #777; }
+  .noprint { margin-top: 24px; }
+  @media print { .noprint { display: none; } }
+</style>
+</head>
+<body>
+<h1>Diagnostic imaging requisition</h1>
+<div class="sub">Valid at any accredited diagnostic imaging facility</div>
+
+<div class="row"><span>Referring physician</span><span>{{ order['referring_doc'] }}</span></div>
+<div class="row"><span>Clinic</span><span>{{ order['clinic_name'] or '' }}</span></div>
+<div class="row"><span>Patient reference</span><span>{{ order['patient_ref'] or '' }}</span></div>
+<div class="row"><span>Date</span><span>{{ order['created_at'][:10] }}</span></div>
+<div class="row"><span>Report to fax</span><span>{{ order['fax_number'] or '' }}</span></div>
+
+<div class="studies">
+  <h2>Studies requested</h2>
+  <ul>
+    {% for s in studies %}
+    <li>{{ s }}</li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="note">This is a test requisition generated during a pilot program and does not reflect a real clinical order.</div>
+
+<div class="noprint">
+  <button onclick="window.print()">Print</button>
+</div>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>X-ray requisition</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f2; margin: 0; padding: 24px 16px; color: #222; }
+  .card { max-width: 460px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 16px; }
+  label { font-size: 13px; color: #555; display: block; margin-bottom: 4px; }
+  input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+  input[type=text]:focus { outline: none; border-color: #888; }
+  .section-label { font-size: 13px; color: #666; margin: 16px 0 8px; }
+  #favs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .pill-btn { padding: 5px 12px; font-size: 13px; border: 1px solid #ccc; border-radius: 999px; background: #fff; cursor: pointer; }
+  .pill-btn:hover { background: #f0f0f0; }
+  #results { max-height: 160px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; }
+  .result-row { padding: 8px 12px; font-size: 14px; cursor: pointer; border-bottom: 1px solid #eee; }
+  .result-row:hover { background: #f7f7f5; }
+  #lateralityBox, #modBox { display: none; margin-top: 12px; padding: 12px; background: #faf9f7; border-radius: 8px; border: 1px solid #eee; }
+  .mod-row { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 6px; }
+  #cartWrap { margin-top: 16px; display: none; }
+  .cart-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f7f7f5; border-radius: 6px; font-size: 13px; margin-bottom: 6px; }
+  .cart-row .remove { color: #999; cursor: pointer; font-weight: bold; }
+  button.primary { width: 100%; padding: 10px; margin-top: 16px; background: #222; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  button.primary:hover { background: #000; }
+  button.secondary { width: 100%; padding: 8px; background: #fff; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  #confirmMsg { display: none; font-size: 13px; color: #1a7a3c; margin-top: 12px; text-align: center; }
+  #errMsg { display: none; font-size: 13px; color: #b3261e; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+    <h1 style="margin:0;">Order an X-ray</h1>
+    <a href="/logout" style="font-size:12px; color:#999;">Not {{ doctor_name }}?</a>
+  </div>
+  <div style="font-size:13px; color:#666; margin-bottom:16px;">{{ doctor_name }}{% if doctor_clinic %} &middot; {{ doctor_clinic }}{% endif %}</div>
+
+  <label for="patient_ref">Patient reference (test only)</label>
+  <input type="text" id="patient_ref" placeholder="Any identifier for this pilot">
+
+  <label for="fax_number">Report fax number</label>
+  <input type="text" id="fax_number" placeholder="10-digit fax" value="{{ doctor_fax }}">
+
+  <div class="section-label">Common studies</div>
+  <div id="favs"></div>
+
+  <label for="search">Search exam</label>
+  <input type="text" id="search" placeholder="e.g. wrist, knee, chest">
+  <div id="results"></div>
+
+  <div id="lateralityBox">
+    <div class="section-label" id="latLabel"></div>
+    <div id="latPills" style="display:flex; gap:6px;"></div>
+  </div>
+
+  <div id="modBox">
+    <div class="section-label" id="modLabel">Additional views (optional)</div>
+    <div id="modChecks"></div>
+    <button class="secondary" id="modConfirm">Add to order</button>
+  </div>
+
+  <div id="cartWrap">
+    <div class="section-label">Studies ordered</div>
+    <div id="cart"></div>
+  </div>
+
+  <div id="errMsg"></div>
+  <button class="primary" id="submitBtn" style="display:none;">Submit requisition</button>
+  <div id="confirmMsg">
+    Requisition submitted.
+    <div style="margin-top:8px;"><a id="printLink" href="#" target="_blank">Print requisition for patient</a></div>
+  </div>
+</div>
+
+<script>
+const exams = [
+  {name:"Chest", laterality:false, favorite:true},
+  {name:"Wrist", laterality:true, favorite:true},
+  {name:"Ankle", laterality:true, favorite:true, modifiers:[{name:"Mortise view",views:1},{name:"Stress view",views:1}]},
+  {name:"Hand", laterality:true, favorite:true},
+  {name:"Knee", laterality:true, favorite:false, modifiers:[{name:"Patellar view",views:1},{name:"Oblique view",views:1},{name:"Tunnel view",views:1}]},
+  {name:"Shoulder", laterality:true, favorite:false, modifiers:[{name:"Axillary view",views:1},{name:"Outlet view",views:1}]},
+  {name:"Elbow", laterality:true, favorite:false},
+  {name:"Foot", laterality:true, favorite:false},
+  {name:"Hip", laterality:true, favorite:false},
+  {name:"Lumbar spine", laterality:false, favorite:true},
+  {name:"Cervical spine", laterality:false, favorite:false},
+  {name:"Pelvis", laterality:false, favorite:false},
+];
+const cart = [];
+
+function renderFavs(){
+  const el = document.getElementById('favs');
+  el.innerHTML = '';
+  exams.filter(e=>e.favorite).forEach(e=>{
+    const b = document.createElement('button');
+    b.className = 'pill-btn';
+    b.textContent = e.name;
+    b.addEventListener('click', ()=>selectExam(e));
+    el.appendChild(b);
+  });
+}
+
+function renderResults(query){
+  const el = document.getElementById('results');
+  el.innerHTML = '';
+  if(!query){ return; }
+  const matches = exams.filter(e=>e.name.toLowerCase().includes(query.toLowerCase()));
+  if(matches.length === 0){
+    const d = document.createElement('div');
+    d.textContent = 'No matching exam';
+    d.style.padding = '10px';
+    d.style.fontSize = '13px';
+    d.style.color = '#999';
+    el.appendChild(d);
+    return;
+  }
+  matches.forEach(e=>{
+    const row = document.createElement('div');
+    row.className = 'result-row';
+    row.textContent = e.name;
+    row.addEventListener('click', ()=>{ selectExam(e); document.getElementById('search').value=''; el.innerHTML=''; });
+    el.appendChild(row);
+  });
+}
+
+function selectExam(e){
+  if(e.laterality){
+    document.getElementById('latLabel').textContent = e.name + ' \u2014 select side';
+    const pillsEl = document.getElementById('latPills');
+    pillsEl.innerHTML = '';
+    ['Left','Right','Bilateral'].forEach(side=>{
+      const p = document.createElement('button');
+      p.className = 'pill-btn';
+      p.textContent = side;
+      p.addEventListener('click', ()=>{
+        document.getElementById('lateralityBox').style.display = 'none';
+        proceedToModifiers(e, e.name + ' (' + side + ')');
+      });
+      pillsEl.appendChild(p);
+    });
+    document.getElementById('lateralityBox').style.display = 'block';
+  } else {
+    proceedToModifiers(e, e.name);
+  }
+}
+
+function proceedToModifiers(e, label){
+  if(e.modifiers && e.modifiers.length){
+    document.getElementById('modLabel').textContent = label + ' \u2014 additional views (optional)';
+    const box = document.getElementById('modChecks');
+    box.innerHTML = '';
+    e.modifiers.forEach(m=>{
+      const row = document.createElement('label');
+      row.className = 'mod-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = m.name;
+      cb.dataset.views = m.views;
+      row.appendChild(cb);
+      row.appendChild(document.createTextNode(m.name));
+      box.appendChild(row);
+    });
+    document.getElementById('modBox').style.display = 'block';
+    document.getElementById('modConfirm').onclick = ()=>{
+      const checked = Array.from(box.querySelectorAll('input:checked'));
+      let totalViews = 2 + checked.reduce((s,c)=>s+parseInt(c.dataset.views),0);
+      let finalLabel = label + ' \u2014 ' + totalViews + ' view';
+      if(checked.length){
+        finalLabel += ' (' + checked.map(c=>c.value).join(', ') + ')';
+      }
+      addToCart(finalLabel);
+      document.getElementById('modBox').style.display = 'none';
+    };
+  } else {
+    addToCart(label + ' \u2014 2 view');
+  }
+}
+
+function addToCart(label){
+  cart.push(label);
+  renderCart();
+}
+
+function renderCart(){
+  const wrap = document.getElementById('cartWrap');
+  const el = document.getElementById('cart');
+  el.innerHTML = '';
+  if(cart.length === 0){ wrap.style.display = 'none'; document.getElementById('submitBtn').style.display='none'; return; }
+  wrap.style.display = 'block';
+  document.getElementById('submitBtn').style.display = 'block';
+  cart.forEach((c,i)=>{
+    const row = document.createElement('div');
+    row.className = 'cart-row';
+    const span = document.createElement('span');
+    span.textContent = c;
+    const rm = document.createElement('span');
+    rm.className = 'remove';
+    rm.textContent = '\u00d7';
+    rm.addEventListener('click', ()=>{ cart.splice(i,1); renderCart(); });
+    row.appendChild(span);
+    row.appendChild(rm);
+    el.appendChild(row);
+  });
+}
+
+document.getElementById('search').addEventListener('input', (e)=>{
+  renderResults(e.target.value);
+});
+
+document.getElementById('submitBtn').addEventListener('click', ()=>{
+  const errEl = document.getElementById('errMsg');
+  errEl.style.display = 'none';
+  const payload = {
+    patient_ref: document.getElementById('patient_ref').value.trim(),
+    fax_number: document.getElementById('fax_number').value.trim(),
+    studies: cart
+  };
+  fetch('/api/submit', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  }).then(r => r.json()).then(data => {
+    if(data.error){
+      errEl.textContent = data.error;
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('printLink').href = '/order/' + data.order_id + '/print';
+    document.getElementById('confirmMsg').style.display = 'block';
+    document.getElementById('submitBtn').style.display = 'none';
+  }).catch(()=>{
+    errEl.textContent = 'Could not submit. Check your connection and try again.';
+    errEl.style.display = 'block';
+  });
+});
+
+renderFavs();
+</script>
+</body>
+</html>

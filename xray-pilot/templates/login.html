@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f2; margin: 0; padding: 24px 16px; color: #222; display: flex; align-items: center; justify-content: center; min-height: 90vh; }
+  .card { max-width: 320px; width: 100%; background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: center; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 18px; }
+  input[type=text] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 20px; letter-spacing: 4px; text-align: center; margin-bottom: 14px; }
+  button { width: 100%; padding: 10px; background: #222; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #000; }
+  .err { font-size: 13px; color: #b3261e; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Enter your PIN</h1>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  <form method="POST">
+    <input type="text" name="pin" inputmode="numeric" maxlength="4" autofocus placeholder="0000">
+    <button type="submit">Continue</button>
+  </form>
+</div>
+</body>
+</html>
