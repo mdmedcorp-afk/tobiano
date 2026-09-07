@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pilot orders</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f2; margin: 0; padding: 24px 16px; color: #222; }
+  table { width: 100%; max-width: 1300px; margin: 0 auto; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #eee; vertical-align: top; }
+  th { background: #fafafa; font-weight: 600; }
+  h1 { max-width: 1300px; margin: 0 auto 16px; font-size: 18px; }
+  .needs-followup { background: #fff4e5; }
+  .flag { display: inline-block; background: #d97706; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-bottom: 4px; }
+  select, input[type=text] { font-size: 12px; padding: 4px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 4px; width: 100%; }
+  form.status-form { display: flex; flex-direction: column; gap: 4px; }
+  button.mini { font-size: 12px; padding: 4px 8px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>Pilot requisitions ({{ orders|length }})</h1>
+<table>
+  <tr><th>#</th><th>Referring doc</th><th>Patient</th><th>DOB</th><th>PHIN</th><th>Cell</th><th>Studies</th><th>Submitted (UTC)</th><th>Status / follow-up</th></tr>
+  {% for o in orders %}
+  {% set needs_followup = (o['status'] == 'issued' and o['created_at'] < cutoff) %}
+  <tr class="{{ 'needs-followup' if needs_followup else '' }}">
+    <td>{{ o['id'] }}</td>
+    <td>{{ o['referring_doc'] }}<br><span style="color:#999;">{{ o['clinic_name'] }}</span></td>
+    <td>{{ o['patient_name'] }}</td>
+    <td>{{ o['patient_dob'] }}</td>
+    <td>{{ o['patient_phin'] }}</td>
+    <td>{{ o['patient_phone'] }}</td>
+    <td>{{ o['studies'] }}</td>
+    <td>{{ o['created_at'] }}</td>
+    <td>
+      {% if needs_followup %}<span class="flag">Call clinic — no update in 3+ days</span>{% endif %}
+      <form class="status-form" method="POST" action="/admin/orders/{{ o['id'] }}/status">
+        <select name="status">
+          <option value="issued" {{ 'selected' if o['status']=='issued' else '' }}>Issued (no update yet)</option>
+          <option value="completed" {{ 'selected' if o['status']=='completed' else '' }}>Completed here</option>
+          <option value="went_elsewhere" {{ 'selected' if o['status']=='went_elsewhere' else '' }}>Went elsewhere</option>
+          <option value="cancelled" {{ 'selected' if o['status']=='cancelled' else '' }}>Cancelled / no show</option>
+        </select>
+        <input type="text" name="followup_note" placeholder="Note from follow-up call" value="{{ o['followup_note'] or '' }}">
+        <button class="mini" type="submit">Save</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</body>
+</html>
