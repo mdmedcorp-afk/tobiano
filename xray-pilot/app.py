@@ -50,6 +50,7 @@ def init_db():
         "patient_phin TEXT",
         "patient_phone TEXT",
         "doctor_address TEXT",
+        "clinical_info TEXT",
     ]:
         try:
             db.execute(f"ALTER TABLE orders ADD COLUMN {column_def}")
@@ -125,12 +126,12 @@ def index():
 @login_required
 def submit_order():
     data = request.get_json(force=True) or {}
-    patient_ref = (data.get("patient_ref") or "").strip()
     patient_name = (data.get("patient_name") or "").strip()
     patient_dob = (data.get("patient_dob") or "").strip()
     patient_sex = (data.get("patient_sex") or "").strip()
     patient_phin = re.sub(r"\D", "", data.get("patient_phin") or "")
     patient_phone = re.sub(r"\D", "", data.get("patient_phone") or "")
+    clinical_info = (data.get("clinical_info") or "").strip()
     studies = data.get("studies") or []
     fax_override = (data.get("fax_number") or "").strip()
 
@@ -142,6 +143,8 @@ def submit_order():
         return jsonify({"error": "PHIN should be 9 digits"}), 400
     if patient_phone and not re.match(r"^\d{10}$", patient_phone):
         return jsonify({"error": "Cell phone should be 10 digits"}), 400
+    if not clinical_info:
+        return jsonify({"error": "Clinical information is required"}), 400
     if not studies:
         return jsonify({"error": "At least one study is required"}), 400
 
@@ -153,9 +156,9 @@ def submit_order():
     db = get_db()
     cur = db.execute(
         """INSERT INTO orders
-           (doctor_id, referring_doc, clinic_name, doctor_address, fax_number, patient_ref,
+           (doctor_id, referring_doc, clinic_name, doctor_address, fax_number,
             patient_name, patient_dob, patient_sex, patient_phin, patient_phone,
-            studies, created_at)
+            clinical_info, studies, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             session.get("doctor_id"),
@@ -163,12 +166,12 @@ def submit_order():
             session.get("doctor_clinic"),
             session.get("doctor_address"),
             fax_number,
-            patient_ref,
             patient_name,
             patient_dob,
             patient_sex,
             patient_phin,
             patient_phone,
+            clinical_info,
             studies_text,
             datetime.utcnow().isoformat(),
         ),

@@ -4,13 +4,16 @@
 <meta charset="UTF-8">
 <title>Diagnostic imaging requisition</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; max-width: 640px; margin: 0 auto; padding: 32px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; max-width: 700px; margin: 0 auto; padding: 32px; }
   h1 { font-size: 18px; margin: 0 0 4px; }
-  .sub { font-size: 13px; color: #666; margin-bottom: 24px; }
-  .row { display: flex; justify-content: space-between; border-bottom: 1px solid #ddd; padding: 8px 0; font-size: 14px; }
-  .row span:first-child { color: #666; }
-  .studies { margin-top: 20px; }
-  .studies h2 { font-size: 14px; margin-bottom: 8px; }
+  .sub { font-size: 13px; color: #666; margin-bottom: 20px; }
+  .top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; border-bottom: 2px solid #333; padding-bottom: 16px; margin-bottom: 16px; }
+  .col h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin: 0 0 8px; }
+  .field { font-size: 14px; margin-bottom: 6px; }
+  .field .label { color: #666; font-size: 11px; display: block; }
+  .section { margin-top: 20px; }
+  .section h2 { font-size: 14px; margin-bottom: 8px; }
+  .clinical-box { font-size: 14px; white-space: pre-wrap; background: #faf9f7; border: 1px solid #eee; border-radius: 6px; padding: 10px 12px; }
   .studies ul { padding-left: 20px; margin: 0; }
   .studies li { font-size: 14px; margin-bottom: 4px; }
   .note { margin-top: 28px; font-size: 12px; color: #777; }
@@ -20,21 +23,32 @@
 </head>
 <body>
 <h1>Diagnostic imaging requisition</h1>
-<div class="sub">Valid at any accredited diagnostic imaging facility</div>
+<div class="sub">Valid at any accredited diagnostic imaging facility &middot; Date requisitioned: {{ order['created_at'][:10] }}</div>
 
-<div class="row"><span>Referring physician</span><span>{{ order['referring_doc'] }}</span></div>
-<div class="row"><span>Clinic</span><span>{{ order['clinic_name'] or '' }}</span></div>
-<div class="row"><span>Clinic address</span><span>{{ order['doctor_address'] or '' }}</span></div>
-<div class="row"><span>Patient name</span><span>{{ order['patient_name'] or '' }}</span></div>
-<div class="row"><span>Date of birth</span><span>{{ order['patient_dob'] or '' }}</span></div>
-<div class="row"><span>Sex</span><span>{{ order['patient_sex'] or '' }}</span></div>
-<div class="row"><span>PHIN</span><span>{{ order['patient_phin'] or '' }}</span></div>
-<div class="row"><span>Cell phone</span><span>{{ order['patient_phone'] or '' }}</span></div>
-<div class="row"><span>Additional reference</span><span>{{ order['patient_ref'] or '' }}</span></div>
-<div class="row"><span>Date requisitioned</span><span>{{ order['created_at'][:10] }}</span></div>
-<div class="row"><span>Report to fax</span><span>{{ order['fax_number'] or '' }}</span></div>
+<div class="top-grid">
+  <div class="col">
+    <h2>Referring physician</h2>
+    <div class="field">{{ order['referring_doc'] }}</div>
+    <div class="field">{{ order['clinic_name'] or '' }}</div>
+    <div class="field">{{ order['doctor_address'] or '' }}</div>
+    <div class="field"><span class="label">Report to fax</span>{{ order['fax_number'] or '' }}</div>
+  </div>
+  <div class="col">
+    <h2>Patient</h2>
+    <div class="field">{{ order['patient_name'] or '' }}</div>
+    <div class="field"><span class="label">Date of birth</span>{{ order['patient_dob'] or '' }}</div>
+    <div class="field"><span class="label">Sex</span>{{ order['patient_sex'] or '' }}</div>
+    <div class="field"><span class="label">PHIN</span>{{ order['patient_phin'] or '' }}</div>
+    <div class="field"><span class="label">Cell phone</span>{{ order['patient_phone'] or '' }}</div>
+  </div>
+</div>
 
-<div class="studies">
+<div class="section">
+  <h2>Clinical information</h2>
+  <div class="clinical-box">{{ order['clinical_info'] or '' }}</div>
+</div>
+
+<div class="section studies">
   <h2>Studies requested</h2>
   <ul>
     {% for s in studies %}
