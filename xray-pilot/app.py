@@ -43,6 +43,18 @@ def init_db():
             created_at TEXT NOT NULL
         )
     """)
+    for column_def in [
+        "patient_name TEXT",
+        "patient_dob TEXT",
+        "patient_sex TEXT",
+        "patient_phin TEXT",
+        "patient_phone TEXT",
+        "doctor_address TEXT",
+    ]:
+        try:
+            db.execute(f"ALTER TABLE orders ADD COLUMN {column_def}")
+        except sqlite3.OperationalError:
+            pass  # column already exists from a prior run
     db.execute("""
         CREATE TABLE IF NOT EXISTS doctors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,6 +65,10 @@ def init_db():
             created_at TEXT NOT NULL
         )
     """)
+    try:
+        db.execute("ALTER TABLE doctors ADD COLUMN address TEXT")
+    except sqlite3.OperationalError:
+        pass  # column already exists from a prior run
     db.commit()
     db.close()
 
@@ -82,6 +98,7 @@ def login():
             session["doctor_name"] = doc["name"]
             session["doctor_clinic"] = doc["clinic_name"]
             session["doctor_fax"] = doc["fax_number"]
+            session["doctor_address"] = doc["address"]
             return redirect(url_for("index"))
         error = "PIN not recognized. Check with your clinic or contact us."
     return render_template("login.html", error=error)
@@ -109,9 +126,22 @@ def index():
 def submit_order():
     data = request.get_json(force=True) or {}
     patient_ref = (data.get("patient_ref") or "").strip()
+    patient_name = (data.get("patient_name") or "").strip()
+    patient_dob = (data.get("patient_dob") or "").strip()
+    patient_sex = (data.get("patient_sex") or "").strip()
+    patient_phin = re.sub(r"\D", "", data.get("patient_phin") or "")
+    patient_phone = re.sub(r"\D", "", data.get("patient_phone") or "")
     studies = data.get("studies") or []
     fax_override = (data.get("fax_number") or "").strip()
 
+    if not patient_name:
+        return jsonify({"error": "Patient name is required"}), 400
+    if not patient_dob or not re.match(r"^\d{4}-\d{2}-\d{2}$", patient_dob):
+        return jsonify({"error": "Date of birth is required, format YYYY-MM-DD"}), 400
+    if patient_phin and not re.match(r"^\d{9}$", patient_phin):
+        return jsonify({"error": "PHIN should be 9 digits"}), 400
+    if patient_phone and not re.match(r"^\d{10}$", patient_phone):
+        return jsonify({"error": "Cell phone should be 10 digits"}), 400
     if not studies:
         return jsonify({"error": "At least one study is required"}), 400
 
@@ -122,13 +152,23 @@ def submit_order():
     studies_text = "; ".join(studies)
     db = get_db()
     cur = db.execute(
-        "INSERT INTO orders (doctor_id, referring_doc, clinic_name, fax_number, patient_ref, studies, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        """INSERT INTO orders
+           (doctor_id, referring_doc, clinic_name, doctor_address, fax_number, patient_ref,
+            patient_name, patient_dob, patient_sex, patient_phin, patient_phone,
+            studies, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             session.get("doctor_id"),
             session.get("doctor_name"),
             session.get("doctor_clinic"),
+            session.get("doctor_address"),
             fax_number,
             patient_ref,
+            patient_name,
+            patient_dob,
+            patient_sex,
+            patient_phin,
+            patient_phone,
             studies_text,
             datetime.utcnow().isoformat(),
         ),
@@ -183,6 +223,7 @@ def admin_doctors():
     if request.method == "POST":
         name = (request.form.get("name") or "").strip()
         clinic_name = (request.form.get("clinic_name") or "").strip()
+        address = (request.form.get("address") or "").strip()
         fax_number = re.sub(r"\D", "", request.form.get("fax_number") or "")
         pin = (request.form.get("pin") or "").strip()
         if not name or not pin:
@@ -194,8 +235,8 @@ def admin_doctors():
         else:
             try:
                 db.execute(
-                    "INSERT INTO doctors (name, clinic_name, fax_number, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (name, clinic_name, fax_number, generate_password_hash(pin), datetime.utcnow().isoformat()),
+                    "INSERT INTO doctors (name, clinic_name, address, fax_number, pin_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (name, clinic_name, address, fax_number, generate_password_hash(pin), datetime.utcnow().isoformat()),
                 )
                 db.commit()
                 just_added = {"name": name, "pin": pin}
