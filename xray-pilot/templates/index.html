@@ -37,25 +37,17 @@
     <h1 style="margin:0;">Order an X-ray</h1>
     <a href="/logout" style="font-size:12px; color:#999;">Not {{ doctor_name }}?</a>
   </div>
-  <div style="font-size:13px; color:#666; margin-bottom:16px;">{{ doctor_name }}{% if doctor_clinic %} &middot; {{ doctor_clinic }}{% endif %}</div>
-
-  <label for="patient_name">Patient name</label>
-  <input type="text" id="patient_name" placeholder="Last, First">
-
-  <label for="patient_dob">Date of birth</label>
-  <input type="text" id="patient_dob" placeholder="YYYY-MM-DD">
-
-  <label for="patient_sex">Sex</label>
-  <input type="text" id="patient_sex" placeholder="M / F / X">
-
-  <label for="patient_phin">PHIN</label>
-  <input type="text" id="patient_phin" placeholder="9-digit health number">
-
-  <label for="patient_phone">Cell phone</label>
-  <input type="text" id="patient_phone" placeholder="10-digit cell number">
+  <div style="font-size:13px; color:#666; margin-bottom:16px;">{{ doctor_name }}{% if doctor_clinic %} &middot; {{ doctor_clinic }}{% endif %} &middot; <a href="/pending">pending requisitions</a></div>
 
   <label for="fax_number">Report fax number</label>
   <input type="text" id="fax_number" placeholder="10-digit fax" value="{{ doctor_fax }}">
+
+  <label for="preferred_clinic">Preferred clinic</label>
+  <select id="preferred_clinic" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:12px;">
+    <option value="">No preference</option>
+    <option value="Legacy X-ray">Legacy X-ray</option>
+    <option value="Park City X-ray">Park City X-ray</option>
+  </select>
 
   <label for="clinical_info">Clinical information</label>
   <textarea id="clinical_info" rows="3" placeholder="Reason for exam, relevant history" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:12px; font-family:inherit; resize:vertical;"></textarea>
@@ -84,20 +76,20 @@
   </div>
 
   <div id="errMsg"></div>
-  <button class="primary" id="submitBtn" style="display:none;">Submit requisition</button>
+  <button class="primary" id="submitBtn" style="display:none;">Send to clerical</button>
   <div id="confirmMsg">
-    Requisition submitted.
-    <div style="margin-top:8px;"><a id="printLink" href="#" target="_blank">Print requisition for patient</a></div>
+    Sent to clerical to complete patient information.
+    <div style="margin-top:8px;"><a href="/pending">View pending requisitions</a></div>
   </div>
 </div>
 
 <script>
 const exams = [
-  {name:"Chest", laterality:false, favorite:true},
+  {name:"Chest", laterality:false, favorite:true, ribAddon:true},
   {name:"Wrist", laterality:true, favorite:true},
   {name:"Ankle", laterality:true, favorite:true, modifiers:[{name:"Mortise view",views:1},{name:"Stress view",views:1}]},
   {name:"Hand", laterality:true, favorite:true},
-  {name:"Knee", laterality:true, favorite:false, modifiers:[{name:"Patellar view",views:1},{name:"Oblique view",views:1},{name:"Tunnel view",views:1}]},
+  {name:"Knee", laterality:true, favorite:false, modifiers:[{name:"Patella view",views:1},{name:"Weight bearing view",views:1},{name:"Tunnel view",views:1},{name:"Oblique view",views:1}]},
   {name:"Shoulder", laterality:true, favorite:false, modifiers:[{name:"Axillary view",views:1},{name:"Outlet view",views:1}]},
   {name:"Elbow", laterality:true, favorite:false},
   {name:"Foot", laterality:true, favorite:false},
@@ -159,9 +151,31 @@ function selectExam(e){
       pillsEl.appendChild(p);
     });
     document.getElementById('lateralityBox').style.display = 'block';
+  } else if(e.ribAddon){
+    promptRibAddon(e);
   } else {
     proceedToModifiers(e, e.name);
   }
+}
+
+function promptRibAddon(e){
+  document.getElementById('latLabel').textContent = e.name + ' \u2014 add rib views?';
+  const pillsEl = document.getElementById('latPills');
+  pillsEl.innerHTML = '';
+  ['Right','Left','Bilateral','No ribs needed'].forEach(option=>{
+    const p = document.createElement('button');
+    p.className = 'pill-btn';
+    p.textContent = option;
+    p.addEventListener('click', ()=>{
+      document.getElementById('lateralityBox').style.display = 'none';
+      addToCart(e.name + ' \u2014 2 view');
+      if(option !== 'No ribs needed'){
+        addToCart('Ribs (' + option + ')');
+      }
+    });
+    pillsEl.appendChild(p);
+  });
+  document.getElementById('lateralityBox').style.display = 'block';
 }
 
 function proceedToModifiers(e, label){
@@ -231,12 +245,8 @@ document.getElementById('submitBtn').addEventListener('click', ()=>{
   const errEl = document.getElementById('errMsg');
   errEl.style.display = 'none';
   const payload = {
-    patient_name: document.getElementById('patient_name').value.trim(),
-    patient_dob: document.getElementById('patient_dob').value.trim(),
-    patient_sex: document.getElementById('patient_sex').value.trim(),
-    patient_phin: document.getElementById('patient_phin').value.trim(),
-    patient_phone: document.getElementById('patient_phone').value.trim(),
     clinical_info: document.getElementById('clinical_info').value.trim(),
+    preferred_clinic: document.getElementById('preferred_clinic').value,
     fax_number: document.getElementById('fax_number').value.trim(),
     studies: cart
   };
@@ -250,7 +260,6 @@ document.getElementById('submitBtn').addEventListener('click', ()=>{
       errEl.style.display = 'block';
       return;
     }
-    document.getElementById('printLink').href = '/order/' + data.order_id + '/print';
     document.getElementById('confirmMsg').style.display = 'block';
     document.getElementById('submitBtn').style.display = 'none';
   }).catch(()=>{
@@ -260,6 +269,62 @@ document.getElementById('submitBtn').addEventListener('click', ()=>{
 });
 
 renderFavs();
+</script>
+<script>
+(function(){
+  var baseTitle = document.title;
+  var blinkOn = false;
+  var hasPending = false;
+
+  function makeFaviconDataUrl(color){
+    var canvas = document.createElement('canvas');
+    canvas.width = 32; canvas.height = 32;
+    var ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.arc(16, 16, 14, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+    return canvas.toDataURL('image/png');
+  }
+  var normalIcon = makeFaviconDataUrl('#333333');
+  var alertIcon = makeFaviconDataUrl('#d97706');
+
+  function setFavicon(href){
+    var link = document.querySelector("link[rel~='icon']");
+    if(!link){
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = href;
+  }
+
+  function tick(){
+    if(!hasPending){
+      document.title = baseTitle;
+      setFavicon(normalIcon);
+      return;
+    }
+    blinkOn = !blinkOn;
+    document.title = blinkOn ? ('(!) ' + baseTitle) : baseTitle;
+    setFavicon(blinkOn ? alertIcon : normalIcon);
+  }
+
+  function checkPending(){
+    fetch('/api/pending_count').then(r => r.json()).then(data => {
+      hasPending = (data.count || 0) > 0;
+      if(!hasPending){
+        document.title = baseTitle;
+        setFavicon(normalIcon);
+      }
+    }).catch(()=>{});
+  }
+
+  setFavicon(normalIcon);
+  checkPending();
+  setInterval(checkPending, 20000);
+  setInterval(tick, 1000);
+})();
 </script>
 </body>
 </html>

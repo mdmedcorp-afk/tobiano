@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete requisition</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f2; margin: 0; padding: 24px 16px; color: #222; }
+  .card { max-width: 460px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #666; margin-bottom: 16px; }
+  .summary { font-size: 13px; background: #faf9f7; border: 1px solid #eee; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; }
+  label { font-size: 13px; color: #555; display: block; margin-bottom: 4px; }
+  input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+  button { width: 100%; padding: 10px; background: #222; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  .err { font-size: 13px; color: #b3261e; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Complete requisition</h1>
+  <div class="sub"><a href="/pending">back to pending list</a></div>
+  <div class="summary">
+    <strong>Clinical:</strong> {{ order['clinical_info'] }}<br>
+    <strong>Studies:</strong> {{ order['studies'] }}
+  </div>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  <form method="POST">
+    <label for="patient_name">Patient name</label>
+    <input type="text" id="patient_name" name="patient_name" placeholder="Last, First">
+
+    <label for="patient_dob">Date of birth</label>
+    <input type="text" id="patient_dob" name="patient_dob" placeholder="YYYY-MM-DD">
+
+    <label for="patient_sex">Sex</label>
+    <input type="text" id="patient_sex" name="patient_sex" placeholder="M / F / X">
+
+    <label for="patient_phin">PHIN</label>
+    <input type="text" id="patient_phin" name="patient_phin" placeholder="9-digit health number">
+
+    <label for="patient_phone">Cell phone</label>
+    <input type="text" id="patient_phone" name="patient_phone" placeholder="10-digit cell number">
+
+    <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:#555; margin-bottom:16px;">
+      <input type="checkbox" name="sms_consent" checked style="width:auto; margin:0;">
+      OK to text this number about appointment timing?
+    </label>
+
+    <button type="submit">Complete and print</button>
+  </form>
+</div>
+</body>
+</html>

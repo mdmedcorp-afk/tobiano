@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Clinic hours</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f2; margin: 0; padding: 24px 16px; color: #222; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .nav { font-size: 13px; margin-bottom: 20px; }
+  .nav a { color: #555; margin-right: 12px; }
+  .section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .section h2 { font-size: 15px; margin: 0 0 12px; }
+  .day-row { display: grid; grid-template-columns: 90px 60px 1fr 1fr; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .day-row input[type=time] { padding: 4px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 100%; }
+  button { padding: 10px 20px; background: #222; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Clinic hours</h1>
+  <div class="nav"><a href="/admin/dashboard">Dashboard</a><a href="/admin">Full order list</a><a href="/admin/doctors">Referring doctors</a></div>
+  <form method="POST">
+    {% for clinic, rows in hours_by_clinic.items() %}
+    <div class="section">
+      <h2>{{ clinic }}</h2>
+      {% for row in rows %}
+      <div class="day-row">
+        <span>{{ day_names[row['day_of_week']] }}</span>
+        <label style="display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" name="{{ clinic }}_{{ row['day_of_week'] }}_open" {{ 'checked' if row['is_open'] else '' }}>
+          Open
+        </label>
+        <input type="time" name="{{ clinic }}_{{ row['day_of_week'] }}_start" value="{{ row['open_time'] }}">
+        <input type="time" name="{{ clinic }}_{{ row['day_of_week'] }}_end" value="{{ row['close_time'] }}">
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    <button type="submit">Save hours</button>
+  </form>
+</div>
+</body>
+</html>

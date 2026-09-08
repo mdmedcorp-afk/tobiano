@@ -5,47 +5,105 @@
 <title>Pilot orders</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f2; margin: 0; padding: 24px 16px; color: #222; }
-  table { width: 100%; max-width: 1300px; margin: 0 auto; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+  table { width: 100%; max-width: 1400px; margin: 0 auto; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
   th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #eee; vertical-align: top; }
   th { background: #fafafa; font-weight: 600; }
-  h1 { max-width: 1300px; margin: 0 auto 16px; font-size: 18px; }
+  h1 { max-width: 1400px; margin: 0 auto 4px; font-size: 18px; }
+  .note-banner { max-width: 1400px; margin: 0 auto 16px; font-size: 12px; color: #777; background: #fff; border-radius: 8px; padding: 10px 14px; }
+  .err-banner { max-width: 1400px; margin: 0 auto 16px; font-size: 13px; color: #b3261e; background: #fdecec; border-radius: 8px; padding: 10px 14px; }
   .needs-followup { background: #fff4e5; }
+  .needs-followup-urgent { background: #fdecec; }
   .flag { display: inline-block; background: #d97706; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-bottom: 4px; }
-  select, input[type=text] { font-size: 12px; padding: 4px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 4px; width: 100%; }
+  .flag-urgent { display: inline-block; background: #c0392b; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-bottom: 4px; }
+  select, input[type=text], input[type=datetime-local], textarea { font-size: 12px; padding: 4px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 4px; width: 100%; }
   form.status-form { display: flex; flex-direction: column; gap: 4px; }
+  .closure-fields { display: none; }
+  .closure-fields.show { display: block; }
   button.mini { font-size: 12px; padding: 4px 8px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; }
 </style>
 </head>
 <body>
 <h1>Pilot requisitions ({{ orders|length }})</h1>
+<div class="note-banner">Closing an order here does not remove it from Velox's Inbound Referrals queue — that still needs to be done manually until the Velox integration exists.</div>
+{% if error %}<div class="err-banner">A resolution note is required when closing an order as went elsewhere, not interested, or unable to contact.</div>{% endif %}
 <table>
-  <tr><th>#</th><th>Referring doc</th><th>Patient</th><th>DOB</th><th>PHIN</th><th>Cell</th><th>Studies</th><th>Submitted (UTC)</th><th>Status / follow-up</th></tr>
+  <tr><th>#</th><th>Referring doc</th><th>Preferred clinic</th><th>Patient</th><th>DOB</th><th>PHIN</th><th>Cell</th><th>Studies</th><th>Billing codes</th><th>Submitted (UTC)</th><th>Arrival text</th><th>Status / resolution</th></tr>
   {% for o in orders %}
-  {% set needs_followup = (o['status'] == 'issued' and o['created_at'] < cutoff) %}
-  <tr class="{{ 'needs-followup' if needs_followup else '' }}">
+  {% set is_urgent = (o['status'] == 'issued' and o['created_at'] < urgent_cutoff) %}
+  {% set needs_followup = (o['status'] == 'issued' and o['created_at'] < cutoff and not is_urgent) %}
+  <tr class="{{ 'needs-followup-urgent' if is_urgent else ('needs-followup' if needs_followup else '') }}">
     <td>{{ o['id'] }}</td>
     <td>{{ o['referring_doc'] }}<br><span style="color:#999;">{{ o['clinic_name'] }}</span></td>
+    <td>{{ o['preferred_clinic'] or 'No preference' }}</td>
     <td>{{ o['patient_name'] }}</td>
     <td>{{ o['patient_dob'] }}</td>
     <td>{{ o['patient_phin'] }}</td>
     <td>{{ o['patient_phone'] }}</td>
     <td>{{ o['studies'] }}</td>
+    <td style="font-size:11px;">{{ o['billing_codes'] or '' }}</td>
     <td>{{ o['created_at'] }}</td>
     <td>
-      {% if needs_followup %}<span class="flag">Call clinic — no update in 3+ days</span>{% endif %}
-      <form class="status-form" method="POST" action="/admin/orders/{{ o['id'] }}/status">
-        <select name="status">
+      {% if o['sms_sent_at'] %}
+        <span style="color:#1a7a3c;">Sent</span><br><span style="font-size:11px; color:#777;">{{ o['suggested_time'] }}</span>
+      {% elif not o['patient_phone'] %}
+        <span style="color:#999;">No cell on file</span>
+      {% elif not o['sms_consent'] %}
+        <span style="color:#999;">No texting consent</span>
+      {% else %}
+        <form method="POST" action="/admin/orders/{{ o['id'] }}/suggest" style="margin-bottom:4px;">
+          <button class="mini" type="submit">Suggest message</button>
+        </form>
+        <form method="POST" action="/admin/orders/{{ o['id'] }}/notify" style="display:flex; flex-direction:column; gap:4px;">
+          <textarea name="suggested_time" rows="3" style="font-size:11px;" placeholder="Click Suggest, or type your own">{{ o['suggested_time'] or '' }}</textarea>
+          <button class="mini" type="submit">Send text</button>
+        </form>
+      {% endif %}
+    </td>
+    <td>
+      {% if is_urgent %}<span class="flag-urgent">No-show risk — 5+ days, resolve now</span>{% endif %}
+      {% if needs_followup %}<span class="flag">Call clinic — 3+ days</span>{% endif %}
+      <form class="status-form" method="POST" action="/admin/orders/{{ o['id'] }}/status" onsubmit="return validateClosure(this);">
+        <select name="status" onchange="toggleClosureFields(this)">
           <option value="issued" {{ 'selected' if o['status']=='issued' else '' }}>Issued (no update yet)</option>
           <option value="completed" {{ 'selected' if o['status']=='completed' else '' }}>Completed here</option>
           <option value="went_elsewhere" {{ 'selected' if o['status']=='went_elsewhere' else '' }}>Went elsewhere</option>
-          <option value="cancelled" {{ 'selected' if o['status']=='cancelled' else '' }}>Cancelled / no show</option>
+          <option value="not_interested" {{ 'selected' if o['status']=='not_interested' else '' }}>Patient not interested</option>
+          <option value="unable_to_contact" {{ 'selected' if o['status']=='unable_to_contact' else '' }}>Unable to contact</option>
         </select>
-        <input type="text" name="followup_note" placeholder="Note from follow-up call" value="{{ o['followup_note'] or '' }}">
+        <div class="closure-fields {{ 'show' if o['status'] in ['went_elsewhere','not_interested','unable_to_contact'] else '' }}">
+          <label style="font-size:11px; color:#777;">Clinic notified at</label>
+          <input type="datetime-local" name="clinic_notified_at" value="{{ o['clinic_notified_at'][:16] if o['clinic_notified_at'] else '' }}">
+          <label style="font-size:11px; color:#777;">Resolution note (required)</label>
+          <textarea name="followup_note" rows="2" placeholder="What happened, who confirmed it">{{ o['followup_note'] or '' }}</textarea>
+        </div>
         <button class="mini" type="submit">Save</button>
       </form>
     </td>
   </tr>
   {% endfor %}
 </table>
+<script>
+function toggleClosureFields(select){
+  var closureStatuses = ['went_elsewhere','not_interested','unable_to_contact'];
+  var fieldsDiv = select.closest('form').querySelector('.closure-fields');
+  if(closureStatuses.indexOf(select.value) !== -1){
+    fieldsDiv.classList.add('show');
+  } else {
+    fieldsDiv.classList.remove('show');
+  }
+}
+function validateClosure(form){
+  var status = form.querySelector('select[name=status]').value;
+  var closureStatuses = ['went_elsewhere','not_interested','unable_to_contact'];
+  if(closureStatuses.indexOf(status) !== -1){
+    var note = form.querySelector('textarea[name=followup_note]').value.trim();
+    if(!note){
+      alert('A resolution note is required when closing an order this way.');
+      return false;
+    }
+  }
+  return true;
+}
+</script>
 </body>
 </html>

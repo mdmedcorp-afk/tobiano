@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f2; margin: 0; padding: 24px 16px; color: #222; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .nav { font-size: 13px; margin-bottom: 20px; }
+  .nav a { color: #555; margin-right: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .card { background: #fff; border-radius: 10px; padding: 14px 16px; }
+  .card .num { font-size: 26px; font-weight: 600; }
+  .card .label { font-size: 12px; color: #777; }
+  .card.flag { background: #fff4e5; }
+  .card.flag .num { color: #d97706; }
+  .card.flag-urgent { background: #fdecec; }
+  .card.flag-urgent .num { color: #c0392b; }
+  .section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .section h2 { font-size: 14px; margin: 0 0 12px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .bar-row .day { font-size: 11px; color: #888; width: 70px; flex-shrink: 0; }
+  .bar-row .bar { background: #333; height: 14px; border-radius: 3px; }
+  .bar-row .count { font-size: 11px; color: #555; width: 24px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; font-size: 13px; border-bottom: 1px solid #eee; }
+  th { color: #888; font-weight: 500; font-size: 11px; text-transform: uppercase; }
+  .flag-badge { display: inline-block; background: #d97706; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 999px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pilot dashboard</h1>
+  <div class="nav"><a href="/admin/dashboard">Dashboard</a><a href="/admin">Full order list</a><a href="/admin/doctors">Referring doctors</a></div>
+
+  <div class="cards">
+    <div class="card"><div class="num">{{ total_orders }}</div><div class="label">Total requisitions</div></div>
+    <div class="card"><div class="num">{{ status_counts.get('draft', 0) }}</div><div class="label">Awaiting patient info</div></div>
+    <div class="card"><div class="num">{{ status_counts.get('issued', 0) }}</div><div class="label">Awaiting outcome</div></div>
+    <div class="card"><div class="num">{{ status_counts.get('completed', 0) }}</div><div class="label">Completed here</div></div>
+    <div class="card"><div class="num">{{ status_counts.get('went_elsewhere', 0) }}</div><div class="label">Went elsewhere</div></div>
+    <div class="card"><div class="num">{{ status_counts.get('not_interested', 0) }}</div><div class="label">Patient not interested</div></div>
+    <div class="card"><div class="num">{{ status_counts.get('unable_to_contact', 0) }}</div><div class="label">Unable to contact</div></div>
+    <div class="card flag"><div class="num">{{ needs_followup_count }}</div><div class="label">Need follow-up call (3+ days)</div></div>
+    <div class="card flag-urgent"><div class="num">{{ urgent_count }}</div><div class="label">No-show risk (5+ days)</div></div>
+  </div>
+
+  <div class="section">
+    <h2>Volume, last 14 days</h2>
+    {% for row in daily_volume %}
+    <div class="bar-row">
+      <div class="day">{{ row['day'] }}</div>
+      <div class="bar" style="width: {{ (row['c'] / max_daily * 300) | round(0, 'floor') }}px;"></div>
+      <div class="count">{{ row['c'] }}</div>
+    </div>
+    {% endfor %}
+    {% if not daily_volume %}<div style="font-size:13px; color:#999;">No orders in this window yet.</div>{% endif %}
+  </div>
+
+  <div class="section">
+    <h2>Top referring physicians</h2>
+    <table>
+      <tr><th>Physician</th><th>Clinic</th><th>Orders</th></tr>
+      {% for r in top_referrers %}
+      <tr><td>{{ r['referring_doc'] }}</td><td>{{ r['clinic_name'] }}</td><td>{{ r['c'] }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Needs follow-up call <span class="flag-badge">{{ flagged_orders|length }}</span></h2>
+    <table>
+      <tr><th>#</th><th>Referring doc</th><th>Patient</th><th>Studies</th><th>Submitted</th><th>Severity</th></tr>
+      {% for o in flagged_orders %}
+      <tr><td>{{ o['id'] }}</td><td>{{ o['referring_doc'] }}</td><td>{{ o['patient_name'] }}</td><td>{{ o['studies'] }}</td><td>{{ o['created_at'][:10] }}</td>
+        <td>{% if o['created_at'] < urgent_cutoff %}<span style="color:#c0392b; font-weight:600;">Urgent</span>{% else %}<span style="color:#d97706;">Follow up</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% if not flagged_orders %}<tr><td colspan="6" style="color:#999;">Nothing overdue right now.</td></tr>{% endif %}
+    </table>
+  </div>
+</div>
+</body>
+</html>
