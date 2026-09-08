@@ -57,11 +57,9 @@ def compute_arrival_message(db, clinic_name, now=None):
         return current_time >= close_dt - timedelta(minutes=CLOSING_SOON_BUFFER_MINUTES)
 
     if today and not is_closing_soon_or_closed(today, now):
-        # Version 1: plenty of time left today
         base = f"please plan to arrive later today before {format_time_12h(today['close_time'])} to help us minimize your wait."
-        base_day_name = None  # base refers to today, not a named future day
+        base_day_name = None
     else:
-        # Version 2: closed or closing soon -- find the next day that's actually open
         next_day = None
         next_day_name = None
         for offset in range(1, 8):
@@ -81,8 +79,6 @@ def compute_arrival_message(db, clinic_name, now=None):
             base = "please contact us to arrange a convenient time for your imaging exam."
             base_day_name = None
 
-    # Version 3: extended-hours nudge, layered on top of either base message above --
-    # skipped if the base message already points at that same day, to avoid repeating it.
     extra = ""
     wednesday = hours_by_day.get(2)
     saturday = hours_by_day.get(5)
@@ -99,10 +95,9 @@ def compute_arrival_message(db, clinic_name, now=None):
 
 
 def send_arrival_sms(to_number, message_body):
-    """Sends a one-way SMS with the given message body. No reply is expected or processed."""
     if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER):
         raise RuntimeError("Twilio is not configured (missing env vars)")
-    from twilio.rest import Client  # imported here so the app runs fine without twilio installed
+    from twilio.rest import Client
     client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     client.messages.create(to=f"+1{to_number}", from_=TWILIO_FROM_NUMBER, body=message_body)
 
@@ -156,7 +151,7 @@ def init_db():
         try:
             db.execute(f"ALTER TABLE orders ADD COLUMN {column_def}")
         except sqlite3.OperationalError:
-            pass  # column already exists from a prior run
+            pass
     db.execute("""
         CREATE TABLE IF NOT EXISTS doctors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -170,7 +165,7 @@ def init_db():
     try:
         db.execute("ALTER TABLE doctors ADD COLUMN address TEXT")
     except sqlite3.OperationalError:
-        pass  # column already exists from a prior run
+        pass
     db.execute("""
         CREATE TABLE IF NOT EXISTS clinic_hours (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,12 +180,26 @@ def init_db():
     existing = db.execute("SELECT COUNT(*) FROM clinic_hours").fetchone()[0]
     if existing == 0:
         for clinic in ["Legacy X-ray", "Park City X-ray"]:
-            for day in range(7):  # 0=Monday .. 6=Sunday
-                is_open = 1 if day < 5 else 0  # default: open Mon-Fri, closed Sat/Sun
+            for day in range(7):
+                is_open = 1 if day < 5 else 0
                 db.execute(
                     "INSERT INTO clinic_hours (clinic_name, day_of_week, is_open, open_time, close_time) VALUES (?, ?, ?, ?, ?)",
                     (clinic, day, is_open, "08:00", "17:00"),
                 )
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS clinics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            address TEXT,
+            fax_number TEXT,
+            pin_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    try:
+        db.execute("ALTER TABLE doctors ADD COLUMN clinic_id INTEGER")
+    except sqlite3.OperationalError:
+        pass
     db.execute("""
         CREATE TABLE IF NOT EXISTS login_attempts (
             ip TEXT PRIMARY KEY,
@@ -205,7 +214,7 @@ def init_db():
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if not session.get("doctor_id"):
+        if not session.get("doctor_id") and not session.get("clinic_id"):
             return redirect(url_for("login"))
         return view(*args, **kwargs)
     return wrapped
@@ -250,6 +259,19 @@ def login():
             session["doctor_address"] = doc["address"]
             return redirect(url_for("index"))
 
+        clinic = None
+        for row in db.execute("SELECT * FROM clinics").fetchall():
+            if check_password_hash(row["pin_hash"], pin):
+                clinic = row
+                break
+
+        if clinic:
+            db.execute("DELETE FROM login_attempts WHERE ip = ?", (ip,))
+            db.commit()
+            session["clinic_id"] = clinic["id"]
+            session["clinic_login_name"] = clinic["name"]
+            return redirect(url_for("pending_orders"))
+
         failed_count = (attempt_row["failed_count"] if attempt_row else 0) + 1
         if failed_count >= MAX_LOGIN_ATTEMPTS:
             locked_until = (now + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
@@ -287,15 +309,20 @@ def index():
         doctor_clinic=session.get("doctor_clinic"),
         doctor_fax=session.get("doctor_fax"),
     )
+
+
 @app.route("/api/submit", methods=["POST"])
 @login_required
 def submit_order():
     data = request.get_json(force=True) or {}
     clinical_info = (data.get("clinical_info") or "").strip()
     preferred_clinic = (data.get("preferred_clinic") or "").strip()
+    patient_name = (data.get("patient_name") or "").strip()
     studies = data.get("studies") or []
     fax_override = (data.get("fax_number") or "").strip()
 
+    if not patient_name:
+        return jsonify({"error": "Patient name is required so clerical knows who this is for"}), 400
     if not clinical_info:
         return jsonify({"error": "Clinical information is required"}), 400
     if not studies:
@@ -318,8 +345,8 @@ def submit_order():
     cur = db.execute(
         """INSERT INTO orders
            (doctor_id, referring_doc, clinic_name, doctor_address, fax_number,
-            clinical_info, preferred_clinic, studies, billing_codes, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)""",
+            clinical_info, preferred_clinic, patient_name, studies, billing_codes, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)""",
         (
             session.get("doctor_id"),
             session.get("doctor_name"),
@@ -328,6 +355,7 @@ def submit_order():
             fax_number,
             clinical_info,
             preferred_clinic,
+            patient_name,
             studies_text,
             billing_codes_text,
             datetime.utcnow().isoformat(),
@@ -341,10 +369,17 @@ def submit_order():
 @login_required
 def complete_order(order_id):
     db = get_db()
-    order = db.execute(
-        "SELECT * FROM orders WHERE id = ? AND doctor_id = ?",
-        (order_id, session.get("doctor_id")),
-    ).fetchone()
+    if session.get("clinic_id"):
+        order = db.execute(
+            "SELECT o.* FROM orders o JOIN doctors d ON o.doctor_id = d.id "
+            "WHERE o.id = ? AND d.clinic_id = ?",
+            (order_id, session.get("clinic_id")),
+        ).fetchone()
+    else:
+        order = db.execute(
+            "SELECT * FROM orders WHERE id = ? AND doctor_id = ?",
+            (order_id, session.get("doctor_id")),
+        ).fetchone()
     if not order:
         return "Requisition not found.", 404
 
@@ -381,10 +416,17 @@ def complete_order(order_id):
 @login_required
 def pending_count():
     db = get_db()
-    count = db.execute(
-        "SELECT COUNT(*) as c FROM orders WHERE doctor_id = ? AND status = 'draft'",
-        (session.get("doctor_id"),),
-    ).fetchone()["c"]
+    if session.get("clinic_id"):
+        count = db.execute(
+            "SELECT COUNT(*) as c FROM orders o JOIN doctors d ON o.doctor_id = d.id "
+            "WHERE d.clinic_id = ? AND o.status = 'draft'",
+            (session.get("clinic_id"),),
+        ).fetchone()["c"]
+    else:
+        count = db.execute(
+            "SELECT COUNT(*) as c FROM orders WHERE doctor_id = ? AND status = 'draft'",
+            (session.get("doctor_id"),),
+        ).fetchone()["c"]
     return jsonify({"count": count})
 
 
@@ -392,25 +434,41 @@ def pending_count():
 @login_required
 def pending_orders():
     db = get_db()
-    drafts = db.execute(
-        "SELECT * FROM orders WHERE doctor_id = ? AND status = 'draft' ORDER BY created_at ASC",
-        (session.get("doctor_id"),),
-    ).fetchall()
-    return render_template("pending.html", drafts=drafts)
+    if session.get("clinic_id"):
+        drafts = db.execute(
+            "SELECT o.* FROM orders o JOIN doctors d ON o.doctor_id = d.id "
+            "WHERE d.clinic_id = ? AND o.status = 'draft' ORDER BY o.created_at ASC",
+            (session.get("clinic_id"),),
+        ).fetchall()
+    else:
+        drafts = db.execute(
+            "SELECT * FROM orders WHERE doctor_id = ? AND status = 'draft' ORDER BY created_at ASC",
+            (session.get("doctor_id"),),
+        ).fetchall()
+    return render_template("pending.html", drafts=drafts, clinic_login_name=session.get("clinic_login_name"))
 
 
 @app.route("/order/<int:order_id>/print")
 @login_required
 def print_order(order_id):
     db = get_db()
-    order = db.execute(
-        "SELECT * FROM orders WHERE id = ? AND doctor_id = ?",
-        (order_id, session.get("doctor_id")),
-    ).fetchone()
+    if session.get("clinic_id"):
+        order = db.execute(
+            "SELECT o.* FROM orders o JOIN doctors d ON o.doctor_id = d.id "
+            "WHERE o.id = ? AND d.clinic_id = ?",
+            (order_id, session.get("clinic_id")),
+        ).fetchone()
+    else:
+        order = db.execute(
+            "SELECT * FROM orders WHERE id = ? AND doctor_id = ?",
+            (order_id, session.get("doctor_id")),
+        ).fetchone()
     if not order:
         return "Requisition not found.", 404
     studies = [s.strip() for s in order["studies"].split(";") if s.strip()]
     return render_template("order_print.html", order=order, studies=studies)
+
+
 @app.route("/admin/hours", methods=["GET", "POST"])
 def admin_hours():
     db = get_db()
@@ -500,6 +558,8 @@ def admin():
     urgent_cutoff = (datetime.utcnow() - timedelta(days=URGENT_FOLLOWUP_DAYS)).isoformat()
     error = request.args.get("error")
     return render_template("admin.html", orders=rows, cutoff=cutoff, urgent_cutoff=urgent_cutoff, error=error)
+
+
 @app.route("/admin/orders/<int:order_id>/suggest", methods=["POST"])
 def suggest_message(order_id):
     db = get_db()
@@ -565,6 +625,33 @@ def update_order_status(order_id):
     return redirect(url_for("admin"))
 
 
+@app.route("/admin/clinics", methods=["GET", "POST"])
+def admin_clinics():
+    db = get_db()
+    error = None
+    just_added = None
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        address = (request.form.get("address") or "").strip()
+        fax_number = re.sub(r"\D", "", request.form.get("fax_number") or "")
+        pin = (request.form.get("pin") or "").strip()
+        if not name or not pin:
+            error = "Clinic name and PIN are required."
+        elif not re.match(r"^\d{4}$", pin):
+            error = "PIN must be exactly 4 digits."
+        elif fax_number and not re.match(r"^\d{10}$", fax_number):
+            error = "Fax number should be 10 digits."
+        else:
+            db.execute(
+                "INSERT INTO clinics (name, address, fax_number, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+                (name, address, fax_number, generate_password_hash(pin), datetime.utcnow().isoformat()),
+            )
+            db.commit()
+            just_added = {"name": name, "pin": pin}
+    clinics = db.execute("SELECT * FROM clinics ORDER BY name").fetchall()
+    return render_template("admin_clinics.html", clinics=clinics, error=error, just_added=just_added)
+
+
 @app.route("/admin/doctors", methods=["GET", "POST"])
 def admin_doctors():
     db = get_db()
@@ -576,6 +663,7 @@ def admin_doctors():
         address = (request.form.get("address") or "").strip()
         fax_number = re.sub(r"\D", "", request.form.get("fax_number") or "")
         pin = (request.form.get("pin") or "").strip()
+        clinic_id = request.form.get("clinic_id") or None
         if not name or not pin:
             error = "Name and PIN are required."
         elif not re.match(r"^\d{4}$", pin):
@@ -585,15 +673,16 @@ def admin_doctors():
         else:
             try:
                 db.execute(
-                    "INSERT INTO doctors (name, clinic_name, address, fax_number, pin_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (name, clinic_name, address, fax_number, generate_password_hash(pin), datetime.utcnow().isoformat()),
+                    "INSERT INTO doctors (name, clinic_name, address, fax_number, pin_hash, clinic_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (name, clinic_name, address, fax_number, generate_password_hash(pin), clinic_id, datetime.utcnow().isoformat()),
                 )
                 db.commit()
                 just_added = {"name": name, "pin": pin}
             except sqlite3.IntegrityError:
                 error = "Could not add doctor. Try again."
     doctors = db.execute("SELECT * FROM doctors ORDER BY name").fetchall()
-    return render_template("admin_doctors.html", doctors=doctors, error=error, just_added=just_added)
+    clinics = db.execute("SELECT * FROM clinics ORDER BY name").fetchall()
+    return render_template("admin_doctors.html", doctors=doctors, error=error, just_added=just_added, clinics=clinics)
 
 
 if __name__ == "__main__":

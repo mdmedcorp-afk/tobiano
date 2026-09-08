@@ -49,6 +49,9 @@
     <option value="Park City X-ray">Park City X-ray</option>
   </select>
 
+  <label for="patient_name">Patient name</label>
+  <input type="text" id="patient_name" placeholder="Last, First — so clerical knows who this is for">
+
   <label for="clinical_info">Clinical information</label>
   <textarea id="clinical_info" rows="3" placeholder="Reason for exam, relevant history" style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:12px; font-family:inherit; resize:vertical;"></textarea>
 
@@ -247,6 +250,7 @@ document.getElementById('submitBtn').addEventListener('click', ()=>{
   const payload = {
     clinical_info: document.getElementById('clinical_info').value.trim(),
     preferred_clinic: document.getElementById('preferred_clinic').value,
+    patient_name: document.getElementById('patient_name').value.trim(),
     fax_number: document.getElementById('fax_number').value.trim(),
     studies: cart
   };

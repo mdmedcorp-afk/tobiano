@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Referring doctors</title>
+<title>Clinics</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f2; margin: 0; padding: 24px 16px; color: #222; }
   .wrap { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 18px; margin: 0 0 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #666; margin-bottom: 16px; }
   form { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   form input { padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
   form button { grid-column: span 2; padding: 9px; background: #222; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
@@ -18,35 +19,26 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Referring doctors ({{ doctors|length }})</h1>
+  <h1>Clinics ({{ clinics|length }})</h1>
+  <div class="sub">A clinic PIN lets one clerical login see every doctor at that site's pending requisitions together. Set this up only if a clinic has more than one doctor sharing clerical staff.</div>
   <form method="POST">
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     {% if just_added %}
     <div class="err" style="color:#1a7a3c;">Added {{ just_added.name }} — PIN: <strong>{{ just_added.pin }}</strong> (write this down now, it will not be shown again)</div>
     {% endif %}
-    <input type="text" name="name" placeholder="Dr. name" required>
-    <input type="text" name="clinic_name" placeholder="Clinic name (free text, for the printed req)">
+    <input type="text" name="name" placeholder="Clinic name" required style="grid-column: span 2;">
     <input type="text" name="address" placeholder="Clinic address" style="grid-column: span 2;">
     <input type="text" name="fax_number" placeholder="Fax number (10 digits)">
-    <select name="clinic_id" style="grid-column: span 2;">
-      <option value="">No shared clerical queue (personal only)</option>
-      {% for c in clinics %}
-      <option value="{{ c['id'] }}">Share pending queue with: {{ c['name'] }}</option>
-      {% endfor %}
-    </select>
-    <input type="text" name="pin" placeholder="4-digit PIN" maxlength="4" required>
-    <button type="submit">Add doctor</button>
+    <input type="text" name="pin" placeholder="4-digit clerical PIN" maxlength="4" required>
+    <button type="submit">Add clinic</button>
   </form>
-  <div style="max-width:640px; margin:0 auto 16px; font-size:12px; color:#777;">To let one clerical account see this doctor's pending requisitions alongside other doctors at the same site, first add a clinic on the <a href="/admin/clinics">clinics page</a>, then pick it here.</div>
   <table>
-    <tr><th>Name</th><th>Clinic</th><th>Address</th><th>Fax</th><th>Shared queue</th></tr>
-    {% for d in doctors %}
+    <tr><th>Name</th><th>Address</th><th>Fax</th></tr>
+    {% for c in clinics %}
     <tr>
-      <td>{{ d['name'] }}</td>
-      <td>{{ d['clinic_name'] }}</td>
-      <td>{{ d['address'] }}</td>
-      <td>{{ d['fax_number'] }}</td>
-      <td>{{ 'Yes' if d['clinic_id'] else '—' }}</td>
+      <td>{{ c['name'] }}</td>
+      <td>{{ c['address'] }}</td>
+      <td>{{ c['fax_number'] }}</td>
     </tr>
     {% endfor %}
   </table>

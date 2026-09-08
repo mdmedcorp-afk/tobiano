@@ -20,10 +20,13 @@
 <body>
 <div class="card">
   <h1>Pending requisitions</h1>
-  <div class="sub">Awaiting patient information &middot; <a href="/">new requisition</a></div>
+  <div class="sub">
+    {% if clinic_login_name %}{{ clinic_login_name }} &middot; shared queue across all doctors{% else %}Awaiting patient information &middot; <a href="/">new requisition</a>{% endif %}
+  </div>
   {% for o in drafts %}
   <div class="row">
     <div class="info">
+      <strong>{{ o['patient_name'] }}</strong>{% if clinic_login_name %} <span style="color:#999; font-weight:normal;">({{ o['referring_doc'] }})</span>{% endif %}<br>
       Clinical: {{ o['clinical_info'][:40] }}{% if o['clinical_info']|length > 40 %}…{% endif %}
       <div class="studies">{{ o['studies'] }}{% if o['preferred_clinic'] %} &middot; {{ o['preferred_clinic'] }}{% endif %}</div>
     </div>

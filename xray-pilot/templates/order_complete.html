@@ -22,13 +22,14 @@
   <h1>Complete requisition</h1>
   <div class="sub"><a href="/pending">back to pending list</a></div>
   <div class="summary">
+    <strong>Patient:</strong> {{ order['patient_name'] }}<br>
     <strong>Clinical:</strong> {{ order['clinical_info'] }}<br>
     <strong>Studies:</strong> {{ order['studies'] }}
   </div>
   {% if error %}<div class="err">{{ error }}</div>{% endif %}
   <form method="POST">
     <label for="patient_name">Patient name</label>
-    <input type="text" id="patient_name" name="patient_name" placeholder="Last, First">
+    <input type="text" id="patient_name" name="patient_name" value="{{ order['patient_name'] or '' }}" placeholder="Last, First">
 
     <label for="patient_dob">Date of birth</label>
     <input type="text" id="patient_dob" name="patient_dob" placeholder="YYYY-MM-DD">
