@@ -78,6 +78,9 @@
         </div>
         <button class="mini" type="submit">Save</button>
       </form>
+      <form method="POST" action="/admin/orders/{{ o['id'] }}/delete" onsubmit="return confirm('Delete this requisition? This cannot be undone.');" style="margin-top:6px;">
+        <button class="mini" type="submit" style="color:#b3261e; border-color:#f0c0c0;">Delete</button>
+      </form>
     </td>
   </tr>
   {% endfor %}

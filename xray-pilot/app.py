@@ -42,11 +42,9 @@ DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 
 
 def compute_arrival_message(db, clinic_name, now=None):
-    """Builds the one-way arrival-time SMS body. `now` is injectable for testing;
-    defaults to the current time in the clinic's local timezone."""
     now = now or datetime.now(CLINIC_TIMEZONE)
     hours_by_day = get_clinic_hours_by_day(db, clinic_name)
-    weekday = now.weekday()  # 0=Monday .. 6=Sunday
+    weekday = now.weekday()
     today = hours_by_day.get(weekday)
 
     def is_closing_soon_or_closed(day_row, current_time):
@@ -558,6 +556,14 @@ def admin():
     urgent_cutoff = (datetime.utcnow() - timedelta(days=URGENT_FOLLOWUP_DAYS)).isoformat()
     error = request.args.get("error")
     return render_template("admin.html", orders=rows, cutoff=cutoff, urgent_cutoff=urgent_cutoff, error=error)
+
+
+@app.route("/admin/orders/<int:order_id>/delete", methods=["POST"])
+def delete_order(order_id):
+    db = get_db()
+    db.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+    db.commit()
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/orders/<int:order_id>/suggest", methods=["POST"])
